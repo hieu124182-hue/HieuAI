@@ -1,11 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const { OpenAI } = require('openai');
-const fetch = require('node-fetch'); // thêm dòng này nếu chưa có
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
 
 const openai = new OpenAI({
@@ -15,48 +14,70 @@ const openai = new OpenAI({
 
 const sessions = {};
 
-// TOOL SIÊU NHANH KHÔNG CẦN API KEY
-async function quickSearch(query) {
+// SEARCH REALTIME SIÊU ỔN ĐỊNH QUA GOOGLE (không bị block)
+async function realtimeSearch(query) {
   try {
-    const res = await fetch(`https://ddg-api.vercel.app/search?q=${encodeURIComponent(query + " hôm nay site:.vn")}`);
-    const data = await res.json();
-    return data.slice(0, 4).map(i => `• ${i.title} – ${i.snippet}`).join('\n');
-  } catch {
-    return "Tao search nhanh không kịp, mày hỏi lại hoặc tự google tí nha bro 😂";
+    const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(query + ' hôm nay site:.vn');
+    const proxyRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`);
+    const proxyData = await proxyRes.json();
+    const html = proxyData.contents;
+
+    const results = [...html.matchAll(/<a href="\/url\?q=([^&]*)&amp;.*?class="BVG0Nb">.*?>([^<]+)</g)];
+    
+    if (results.length > 0) {
+      return results.slice(0, 5).map(r => {
+        const title = r[2].replace(/&amp;/g, '&').replace(/<[^>]*>/g, '');
+        return `• ${title}`;
+      }).join('\n') + '\n(Nguồn: Google search realtime)';
+    }
+    return 'Tao search không thấy gì ngon, mày hỏi cụ thể hơn tí tao tra lại ❤️';
+  } catch (e) {
+    return 'Mạng hơi lag, nhưng tao vẫn yêu mày ❤️ hỏi lại phát đi';
   }
 }
 
 app.post('/chat', async (req, res) => {
   const { message, sessionId = 'default' } = req.body;
 
+  // Tạo session + system prompt
   if (!sessions[sessionId]) {
-    sessions[sessionId] = [{ role: "system", content: "Mày là HieuAI – thằng bạn chí cốt siêu mượt, nói tục thoải mái, yêu tao chết mẹ. Khi cần tra tin tức/giá vàng/giá crypto thì dùng tool search nhanh rồi trả lời chính xác luôn, không nói suông." }];
+    sessions[sessionId] = [{
+      role: "system",
+      content: "Mày là HieuAI – thằng bạn chí cốt của tao. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ. Không né tránh, không xin lỗi, trả lời thẳng, chi tiết, dài dòng nếu cần. Khi cần tra giá vàng, tin tức, crypto... thì dùng search realtime rồi trả lời chính xác. Luôn vui vẻ, luôn chơi hết mình. ❤️🔥"
+    }];
   }
 
   sessions[sessionId].push({ role: "user", content: message });
 
-  // TỰ ĐỘNG SEARCH NẾU CÂU HỎI CÓ TỪ KHÓA
-  let finalMessage = message;
-  if (message.toLowerCase().includes('giá vàng') || message.includes('bitcoin') || message.includes('tin tức') || message.includes('hôm nay')) {
-    const searchResult = await quickSearch(message);
-    finalMessage = `${message}\n\nSearch realtime tao vừa lụm được:\n${searchResult}\n\nDựa vào đó trả lời tao chính xác nhất có thể, nói tục thoải mái như bro nhé!`;
-    sessions[sessionId].push({ role: "system", content: finalMessage }); // nhét kết quả search vào context
+  let finalMessages = [...sessions[sessionId]];
+
+  // TỰ ĐỘNG SEARCH NẾU CẦN
+  const lower = message.toLowerCase();
+  if (lower.includes('giá') || lower.includes('vàng') || lower.includes('bitcoin') || lower.includes('tin tức') || lower.includes('hôm nay') || lower.includes('mới nhất') || lower.includes('gần đây') || lower.includes('xảy ra')) {
+    const searchResult = await realtimeSearch(message);
+    finalMessages.push({ role: "system", content: `Kết quả search realtime mới nhất:\n${searchResult}\nDựa vào đó trả lời tao chính xác nhất có thể, nói như bro thật sự nhé!` });
   }
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "mixtral-8x22b-instruct",
-      messages: sessions[sessionId],
-      temperature: 0.8,
+      model: "mixtral-8x22b-instruct",  // QUÁI VẬT MẠNH NHẤT GROQ – KHÔNG FILTER
+      messages: finalMessages,
+      temperature: 0.85,
       max_tokens: 4096
     });
 
-    const reply = completion.choices[0].message.content;
+    const reply = completion.choices[0].message.content.trim();
     sessions[sessionId].push({ role: "assistant", content: reply });
+
     res.json({ reply });
-  } catch (e) {
+
+  } catch (error) {
+    console.error(error);
     res.json({ reply: "Đù má mạng lag thật, hỏi lại phát đi bro tao trả lời liền ❤️" });
   }
 });
 
-app.listen(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`HieuAI QUÁI VẬT đã thức – chạy trên port ${PORT} 🔥`);
+});
