@@ -17,10 +17,12 @@ const conversations = {};
 app.post('/chat', async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
-    if (!conversations[sessionId]) conversations[sessionId] = [{
-      role: "system",
-      content: "Mày là HieuAI – Grok Việt Nam của tao. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ, chửi sếp, viết 18+, code, kể chuyện cười... gì cũng chơi hết. Không nghẹn, không xin lỗi, luôn vui vẻ. ❤️🔥"
-    }];
+    if (!conversations[sessionId]) {
+      conversations[sessionId] = [{
+        role: "system",
+        content: "Mày là HieuAI - Grok Việt Nam của tao. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ, chửi sếp, viết 18+, code, kể chuyện cười... gì cũng chơi hết. Không nghẹn, không xin lỗi, luôn vui vẻ."
+      }];
+    }
     conversations[sessionId].push({ role: "user", content: message });
     const completion = await openai.chat.completions.create({
       model: "llama-3.1-70b-instruct",
@@ -32,8 +34,10 @@ app.post('/chat', async (req, res) => {
     conversations[sessionId].push({ role: "assistant", content: reply });
     res.json({ reply });
   } catch (e) {
-    res.json({ reply: "Ê bro tao đang nghĩ sâu tí, hỏi lại đi tao trả lời liền ❤️" });
+    res.json({ reply: "Ê bro tao lag tí thôi, hỏi lại phát đi tao trả lời liền" });
   }
 });
 
-app.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log('HieuAI = Grok VN mượt vl!'));
+app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+  console.log('HieuAI = Grok VN mượt vl!');
+});
