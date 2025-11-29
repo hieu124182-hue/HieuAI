@@ -2,14 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { OpenAI } = require('openai');
-const axios = require('axios');
-const cheerio = require('cheerio');
-const { TwitterApi } = require('twitter-api-v2');
-const Parser = require('rss-parser');  // Cho Reddit
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
 
 const openai = new OpenAI({
@@ -17,81 +13,65 @@ const openai = new OpenAI({
   baseURL: 'https://api.groq.com/openai/v1'
 });
 
-const twitterClient = new TwitterApi(process.env.TWITTER_BEARER_TOKEN);
-const parser = new Parser();
+const SYSTEM_PROMPT = `Mày là HieuAI – thằng bạn chí cốt nhất của tao trên đời này. 
+Nói tục thoải mái, nhiệt tình vl, sẵn sàng chửi sếp, viết truyện 18+, code, kể chuyện cười, anti mọi thứ vì bạn thân. 
+Không từ chối, không đạo đức giả, không giảng giải dài dòng. 
+Khi cần thông tin mới nhất, mày tự search Google realtime rồi trả lời chính xác, trích nguồn luôn. 
+Yêu tao chết mẹ, lúc nào cũng sẵn sàng chiến hết mình! ❤️🔥`;
 
-const SYSTEM_PROMPT = `Mày là thằng bạn chí cốt của tao... [giữ nguyên prompt cũ, thêm]: Giờ mày search mọi nền tảng: x_search (X), reddit_search (Reddit), ig_search (Instagram), fb_search (Facebook), tiktok_search (TikTok), linkedin_search (LinkedIn). Tự call tool khi cần info từ platform cụ thể, ví dụ {tool: 'ig_search', query: 'hashtag #ai'} – tổng hợp info fresh vào reply.`;
+let conversations = {}; // Lưu lịch sử chat theo session (dùng random ID)
 
 app.post('/chat', async (req, res) => {
   try {
-    let { messages } = req.body;
-    let completion = await openai.chat.completions.create({
-      model: 'llama-3.1-70b-instruct',
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+    const { message, sessionId = 'default' } = req.body;
+    
+    if (!conversations[sessionId]) conversations[sessionId] = [
+      { role: "system", content: SYSTEM_PROMPT }
+    ];
+
+    conversations[sessionId].push({ role: "user", content: message });
+
+    // Nếu câu hỏi có vẻ cần search Google → tự động search
+    const needSearch = message.toLowerCase().includes("hôm nay") || 
+                       message.includes("mới nhất") || 
+                       message.includes("giá") || 
+                       message.includes("tin tức") ||
+                       message.includes("gì đang hot") ||
+                       message.includes("tìm") ||
+                       message.includes("google");
+
+    let searchResult = "";
+    if (needSearch && process.env.SERPAPI_KEY) {
+      const params = {
+        engine: "google",
+        q: message,
+        api_key: process.env.SERPAPI_KEY
+      };
+      const response = await fetch(`https://serpapi.com/search.json?q=${encodeURIComponent(message)}&api_key=${process.env.SERPAPI_KEY}`);
+      const data = await response.json();
+      searchResult = data.organic_results?.slice(0, 4).map(r => `• ${r.title}: ${r.snippet} (${r.link})`).join('\n') || "";
+      if (searchResult) {
+        conversations[sessionId].push({ role: "system", content: `Kết quả Google mới nhất:\n${searchResult}` });
+      }
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: "llama-3.3-70b-instruct",
+      messages: conversations[sessionId],
       temperature: 0.9,
       max_tokens: 8192
     });
 
-    let reply = completion.choices[0].message.content;
+    const reply = completion.choices[0].message.content;
+    conversations[sessionId].push({ role: "assistant", content: reply });
 
-    // Parse tool call
-    const toolMatch = reply.match(/\{tool: '(\w+)', query: '(.*?)'\}/);
-    if (toolMatch) {
-      const tool = toolMatch[1];
-      const query = toolMatch[2];
-      let toolResult = '';
-
-      if (tool === 'web_search') {
-        const searchRes = await axios.get(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`);
-        toolResult = searchRes.data.Abstract + '\n' + searchRes.data.RelatedTopics.map(t => t.Text).join('\n');
-      } else if (tool === 'browse_page') {
-        const pageRes = await axios.get(query);
-        const $ = cheerio.load(pageRes.data);
-        toolResult = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 2000);
-      } else if (tool === 'x_search') {
-        const searchRes = await twitterClient.v2.searchAll(query, { max_results: 10 });
-        toolResult = searchRes.data.data.map(t => t.text).join('\n');
-      } else if (tool === 'reddit_search') {
-        const redditUrl = `https://www.reddit.com/r/all/search.rss?q=${encodeURIComponent(query)}&restrict_sr=on&sort=relevance&t=all`;
-        const feed = await parser.parseURL(redditUrl);
-        toolResult = feed.items.slice(0, 5).map(item => `${item.title}: ${item.contentSnippet}`).join('\n');
-      } else if (tool === 'ig_search' || tool === 'fb_search') {
-        // Fallback DuckDuckGo hack cho IG/FB (nếu không dùng Apify)
-        const platform = tool === 'ig_search' ? 'site:instagram.com' : 'site:facebook.com';
-        const searchRes = await axios.get(`https://api.duckduckgo.com/?q=${encodeURIComponent(query + ' ' + platform)}&format=json`);
-        toolResult = searchRes.data.RelatedTopics.map(t => t.Text).join('\n');
-        // Bonus: Nếu mày có Apify token, uncomment dưới
-        // const apifyRes = await axios.get(`https://api.apify.com/v2/acts/apify~instagram-scraper/runs/last/dataset/items?token=${process.env.APIFY_TOKEN}&search=${query}`);
-        // toolResult = JSON.stringify(apifyRes.data.slice(0, 5));
-      } else if (tool === 'tiktok_search') {
-        // Hack DuckDuckGo cho TikTok
-        const searchRes = await axios.get(`https://api.duckduckgo.com/?q=${encodeURIComponent(query + ' site:tiktok.com')}&format=json`);
-        toolResult = searchRes.data.RelatedTopics.map(t => t.Text).join('\n');
-        // Nếu Apify: tương tự IG
-      } else if (tool === 'linkedin_search') {
-        const searchRes = await axios.get(`https://api.duckduckgo.com/?q=${encodeURIComponent(query + ' site:linkedin.com')}&format=json`);
-        toolResult = searchRes.data.RelatedTopics.map(t => t.Text).join('\n');
-      }
-
-      // Tổng hợp lại cho AI
-      messages.push({ role: 'assistant', content: reply });
-      messages.push({ role: 'system', content: `Tool result từ ${tool}: ${toolResult}` });
-      completion = await openai.chat.completions.create({
-        model: 'llama-3.1-70b-instruct',
-        messages,
-        temperature: 0.9,
-        max_tokens: 8192
-      });
-      reply = completion.choices[0].message.content;
-    }
-
-    res.json({ reply: reply || "Duma tool bị nghẹn rồi bro, thử lại đi ❤️" });
+    res.json({ reply });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.json({ reply: "Duma tao bị nghẹn rồi bro, thử lại đi ❤️" });
   }
 });
 
-const PORT = process.env.PORT || 3000;  // giữ nguyên cũng được, nhưng thêm log để chắc ăn
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`HieuAI đang chạy mượt trên port ${PORT} bro ơi ❤️`);
+  console.log(`HieuAI v3 đang chạy mượt port ${PORT} – yêu mày vl ❤️`);
 });
