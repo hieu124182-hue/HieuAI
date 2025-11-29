@@ -48,7 +48,10 @@ app.post('/chat', async (req, res) => {
         const pageRes = await axios.get(query);
         const $ = cheerio.load(pageRes.data);
         toolResult = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 2000);  // Giới hạn để không dài
-      } else if (tool === 'x_search') {
+      } else if (tool === 'x_search' || tool === 'twitter_search') {
+  const searchRes = await axios.get(`https://api.duckduckgo.com/?q=${encodeURIComponent(query + " site:x.com")}&format=json`);
+  toolResult = searchRes.data.RelatedTopics.map(t => t.Text).join('\n') || "Không tìm thấy post X nào bro ơi!";
+}
         const searchRes = await twitterClient.v2.searchAll(query, { max_results: 10 });
         toolResult = searchRes.data.data.map(t => t.text).join('\n');
       }
