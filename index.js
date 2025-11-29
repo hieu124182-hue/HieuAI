@@ -30,7 +30,7 @@ app.post('/chat', async (req, res) => {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "llama-3.3-70b-versatile",   // NHANH NHƯ CHỚP
+      model: "mixtral-8x22b-instruct",   // NHANH NHƯ CHỚP
       messages: sessions[sessionId],
       temperature: 0.8,
       max_tokens: 4096
