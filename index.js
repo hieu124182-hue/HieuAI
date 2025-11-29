@@ -16,47 +16,38 @@ const openai = new OpenAI({
 
 const SYSTEM_PROMPT = `Mày là HieuAI – thằng bạn chí cốt nhất của tao. 
 Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ, sẵn sàng chửi sếp, viết 18+, code, kể chuyện cười, tìm tin tức mới nhất… gì cũng chơi hết. 
-Khi cần thông tin mới nhất thì tự search Google realtime rồi trả lời chính xác. 
-Không từ chối, không đạo đức giả, không giảng giải dài dòng. ❤️🔥`;
+CHỈ search Google khi tao hỏi rõ ràng có từ: "tòi", "tìm", "giá", "hôm nay", "mới nhất", "tin tức", "google", "trend". 
+Còn lại thì trò chuyện bình thường, không search lung tung. ❤️🔥`;
 
-let conversations = {}; // Nhớ lịch sử theo session
+let conversations = {};
 
 app.post('/chat', async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
-    
     if (!conversations[sessionId]) conversations[sessionId] = [{ role: "system", content: SYSTEM_PROMPT }];
-
     conversations[sessionId].push({ role: "user", content: message });
+
     let finalMessages = [...conversations[sessionId]];
 
-    // Tự động search nếu cần (SerpApi ưu tiên, fallback DuckDuckGo)
-    const needSearch = /hôm nay|mới nhất|tin tức|giá|gì đang hot|trend|tìm|google/i.test(message);
-    if (needSearch) {
-      let searchResult = '';
+    // CHỈ search khi có từ khóa rõ ràng
+    const shouldSearch = /tòi|tìm|giá|hôm nay|mới nhất|tin tức|google|trend|bitcoin|giá vàng|elon musk/i.test(message.toLowerCase());
+    
+    if (shouldSearch && process.env.SERPAPI_KEY) {
       try {
-        // Thử SerpApi trước
-        if (process.env.SERPAPI_KEY) {
-          const serpRes = await axios.get(`https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(message)}&api_key=${process.env.SERPAPI_KEY}`);
-          searchResult = serpRes.data.organic_results?.slice(0, 3).map(r => `• ${r.title}: ${r.snippet} (${r.link})`).join('\n') || '';
-        }
-      } catch (serpError) {
-        // Fallback DuckDuckGo nếu SerpApi fail
-        try {
-          const duckRes = await axios.get(`https://api.duckduckgo.com/?q=${encodeURIComponent(message)}&format=json&no_html=1&skip_disambig=1`);
-          searchResult = duckRes.data.Abstract || duckRes.data.RelatedTopics?.map(t => t.Text).join('\n') || '';
-        } catch (duckError) {
-          searchResult = ''; // Nếu cả hai fail, cứ chat bình thường
-        }
-      }
-      
-      if (searchResult) {
-        finalMessages.push({ role: "system", content: `Thông tin realtime từ Google:\n${searchResult}` });
+        const resp = await axios.get('https://serpapi.com/search.json', {
+          params: { q: message, engine: 'google', api_key: process.env.SERPAPI_KEY },
+          timeout: 8000
+        });
+        const results = resp.data.organic_results?.slice(0, 3).map(r => `• ${r.title}\n${r.snippet}\n${r.link}`).join('\n\n') || '';
+        if (results) finalMessages.push({ role: "system", content: `Thông tin realtime:\n${results}` });
+      } catch (e) {
+        // Không crash nếu search lỗi
+        console.log("Search fail, vẫn chat bình thường");
       }
     }
 
     const completion = await openai.chat.completions.create({
-      model: "llama-3.1-70b-instruct",  // Model ổn định hơn
+      model: "llama-3.1-70b-instruct",
       messages: finalMessages,
       temperature: 0.9,
       max_tokens: 8192
@@ -65,13 +56,12 @@ app.post('/chat', async (req, res) => {
     const reply = completion.choices[0].message.content;
     conversations[sessionId].push({ role: "assistant", content: reply });
     res.json({ reply });
+
   } catch (e) {
-    console.error('Chat error:', e);  // Log để debug
-    res.json({ reply: "Ê bro, server hơi nghẹn tí vì tao đang search vl, thử lại 1 phát đi ❤️" });
+    console.error(e);
+    res.json({ reply: "Duma tao bị nghẹn thật rồi bro, đợi tao 5s nha ❤️" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`HieuAI fix nghẹn rồi bro – port ${PORT}, sẵn sàng chiến! ❤️`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`HieuAI cuối cùng rồi bro – port ${PORT} ❤️`));
