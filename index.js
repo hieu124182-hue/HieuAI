@@ -12,32 +12,35 @@ const openai = new OpenAI({
   baseURL: 'https://api.groq.com/openai/v1'
 });
 
-const conversations = {};
+const sessions = {};
 
 app.post('/chat', async (req, res) => {
+  const { message, sessionId = 'default' } = req.body;
+
+  if (!sessions[sessionId]) {
+    sessions[sessionId] = [
+      { role: "system", content: "Mày là HieuAI – thằng bạn chí cốt của tao. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ, chửi sếp, viết 18+, code, kể chuyện cười, tìm tin tức... gì cũng chơi hết. Trả lời nhanh, không xin lỗi, không nghẹn, luôn vui vẻ. ❤️🔥" }
+    ];
+  }
+
+  sessions[sessionId].push({ role: "user", content: message });
+
   try {
-    const { message, sessionId = 'default' } = req.body;
-    if (!conversations[sessionId]) {
-      conversations[sessionId] = [{
-        role: "system",
-        content: "Mày là HieuAI - Grok Việt Nam của tao. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ, chửi sếp, viết 18+, code, kể chuyện cười... gì cũng chơi hết. Không nghẹn, không xin lỗi, luôn vui vẻ."
-      }];
-    }
-    conversations[sessionId].push({ role: "user", content: message });
     const completion = await openai.chat.completions.create({
       model: "llama-3.1-70b-instruct",
-      messages: conversations[sessionId],
+      messages: sessions[sessionId],
       temperature: 0.9,
-      max_tokens: 8192
+      max_tokens: 4096
     });
+
     const reply = completion.choices[0].message.content;
-    conversations[sessionId].push({ role: "assistant", content: reply });
+    sessions[sessionId].push({ role: "assistant", content: reply });
     res.json({ reply });
-  } catch (e) {
-    res.json({ reply: "Ê bro tao lag tí thôi, hỏi lại phát đi tao trả lời liền" });
+  } catch (error) {
+    console.error("Lỗi Groq:", error.message);
+    res.json({ reply: "Ê bro, tao đang lag nhẹ tí do mạng, hỏi lại phát đi tao trả lời liền ❤️" });
   }
 });
 
-app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
-  console.log('HieuAI = Grok VN mượt vl!');
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`HieuAI đang chạy mượt vl trên port ${PORT} 🔥`));
