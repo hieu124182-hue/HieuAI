@@ -91,5 +91,7 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`HieuAI search mọi nơi port ${PORT}`));
+const PORT = process.env.PORT || 3000;  // giữ nguyên cũng được, nhưng thêm log để chắc ăn
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`HieuAI đang chạy mượt trên port ${PORT} bro ơi ❤️`);
+});
