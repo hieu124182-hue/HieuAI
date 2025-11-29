@@ -1,6 +1,6 @@
 {
-  "name": "hieuai",
-  "version": "1.0.0",
+  "name": "hieuai-pro",
+  "version": "2.0.0",
   "main": "index.js",
   "license": "MIT",
   "scripts": {
@@ -10,6 +10,9 @@
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "openai": "^4.56.0"
+    "openai": "^4.56.0",
+    "axios": "^1.7.7",
+    "cheerio": "^1.0.0-rc.12",
+    "twitter-api-v2": "^1.18.0"
   }
 }
