@@ -1,6 +1,6 @@
 {
-  "name": "hieuai-grok",
-  "version": "3.0.0",
+  "name": "hieuai-grok-vn",
+  "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
