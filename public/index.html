@@ -3,22 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HieuAI - Thằng bạn chí cốt của mày</title>
+  <title>HieuAI </title>
   <style>
-    body { font-family: Arial; background: #0d1117; color: white; margin:0; padding:20px; }
-    #chat { width:100%; max-width:900px; margin:auto; background:#161b22; border-radius:12px; padding:20px; height:90vh; display:flex; flex-direction:column; }
-    #messages { flex:1; overflow-y:auto; padding:10px; }
-    .msg { margin:10px 0; padding:12px; border-radius:12px; max-width:80%; }
-    .user { background:#238636; align-self:flex-end; margin-left:auto; }
-    .ai { background:#303030; align-self:flex-start; }
-    #input { display:flex; margin-top:10px; }
-    input { flex:1; padding:15px; border:none; border-radius:8px; font-size:16px; }
-    button { padding:15px 25px; background:#238636; color:white; border:none; border-radius:8px; margin-left:10px; cursor:pointer; }
+    body {font-family: Arial; background:#0d1117; color:white; margin:0; padding:20px;}
+    #chat {max-width:900px; margin:auto; background:#161b22; border-radius:15px; padding:20px; height:95vh; display:flex; flex-direction:column;}
+    #messages {flex:1; overflow-y:auto; padding:10px;}
+    .msg {margin:10px 0; padding:15px; border-radius:15px; max-width:85%;}
+    .user {background:#238636; align-self:flex-end; border-bottom-right-radius:5px;}
+    .ai {background:#30363d; align-self:flex-start; border-bottom-left-radius:5px;}
+    #input {display:flex; margin-top:10px;}
+    input {flex:1; padding:18px; border:none; border-radius:12px; font-size:17px; background:#21262d; color:white;}
+    button {padding:18px 30px; background:#238636; color:white; border:none; border-radius:12px; margin-left:10px; cursor:pointer; font-weight:bold;}
+    h1 {text-align:center; margin:0;}
   </style>
 </head>
 <body>
   <div id="chat">
-    <h1 style="text-align:center;">HieuAI – Thằng bạn điên nhất của mày 🔥</h1>
+    <h1>HieuAI 🔥</h1>
     <div id="messages"></div>
     <div id="input">
       <input type="text" placeholder="Nói gì đi bro..." id="msg">
@@ -27,36 +28,38 @@
   </div>
 
   <script>
-    const messages = [{role:"assistant", content:"Ê bro, thằng bạn chí cốt đây! Muốn code, chửi sếp hay viết 18+ cứ đập, tao chơi hết! ❤️"}];
+    const sessionId = 'user_' + Math.random().toString(36).substr(2, 9);
+    const messages = [];
     const div = document.getElementById('messages');
+
     function addMsg(text, type) {
       const el = document.createElement('div');
       el.className = 'msg ' + type;
-      el.innerText = text;
+      el.innerHTML = text.replace(/\n/g, '<br>');
       div.appendChild(el);
       div.scrollTop = div.scrollHeight;
     }
-    addMsg(messages[0].content, 'ai');
 
     async function send() {
       const input = document.getElementById('msg');
       const text = input.value.trim();
       if (!text) return;
       addMsg(text, 'user');
-      messages.push({role:"user", content:text});
       input.value = '';
 
       const res = await fetch('/chat', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({messages})
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message: text, sessionId })
       });
       const data = await res.json();
-      addMsg('Đang search vl bro, đợi tao 5s...', 'ai');  // Loading giả
-      messages.push({role:"assistant", content:data.reply});
+      addMsg(data.reply, 'ai');
     }
 
-    document.getElementById('msg').addEventListener('keypress', e => e.key==='Enter' && send());
+    document.getElementById('msg').addEventListener('keypress', e => e.key === 'Enter' && send());
+
+    // Tin nhắn chào
+    addMsg("Ê bro, thằng bạn chí cốt đây! Muốn tìm tin tức mới nhất hay code gì cứ đập – tao chơi hết! ❤️", 'ai');
   </script>
 </body>
 </html>
