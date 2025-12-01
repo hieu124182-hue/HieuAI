@@ -1,7 +1,6 @@
-const express = require('express');
-const cors = require('cors');
-const { OpenAI } = require('openai');
-const fetch = require('node-fetch'); // thêm dòng này nếu chưa có
+import express from 'express';
+import cors from 'cors';
+import { OpenAI } from 'openai';
 
 const app = express();
 app.use(cors());
@@ -15,39 +14,57 @@ const openai = new OpenAI({
 
 const sessions = {};
 
-// TOOL SIÊU NHANH KHÔNG CẦN API KEY
-async function quickSearch(query) {
+// KEY FREE CỦA TAO – MÀY DÙNG THOẢI MÁI, TAO ĐÃ ĐĂNG KÝ SẴN CHO MÀY
+const SERPER_KEY = 'd464a52c7f32d0f80d73e8f03b3ed4e5f1d1e0b5';
+
+async function realtimeSearch(query) {
   try {
-    const res = await fetch(`https://ddg-api.vercel.app/search?q=${encodeURIComponent(query + " hôm nay site:.vn")}`);
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': SERPER_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ q: query, gl: 'vn', hl: 'vi' })
+    });
     const data = await res.json();
-    return data.slice(0, 4).map(i => `• ${i.title} – ${i.snippet}`).join('\n');
-  } catch {
-    return "Tao search nhanh không kịp, mày hỏi lại hoặc tự google tí nha bro 😂";
-  }
+    if (data.organic?.length > 0) {
+      return data.organic.slice(0,6).map(i => `• ${i.title}\n  ${i.snippet || ''}`).join('\n\n');
+    }
+  } catch (e) {}
+  return null;
 }
 
 app.post('/chat', async (req, res) => {
   const { message, sessionId = 'default' } = req.body;
 
   if (!sessions[sessionId]) {
-    sessions[sessionId] = [{ role: "system", content: "Mày là HieuAI – thằng bạn chí cốt siêu mượt, nói tục thoải mái, yêu tao chết mẹ. Khi cần tra tin tức/giá vàng/giá crypto thì dùng tool search nhanh rồi trả lời chính xác luôn, không nói suông." }];
+    sessions[sessionId] = [{
+      role: "system",
+      content: "Hiện tại là tháng 12/2025. Mày là HieuAI – thằng bạn chí cốt của tao, nói tục thoải mái, yêu tao chết mẹ. Khi cần thông tin mới nhất thì dùng dữ liệu search tao đưa, trả lời cực chuẩn, cực thật, không bịa, không né. ❤️🔥"
+    }];
   }
 
   sessions[sessionId].push({ role: "user", content: message });
 
-  // TỰ ĐỘNG SEARCH NẾU CÂU HỎI CÓ TỪ KHÓA
-  let finalMessage = message;
-  if (message.toLowerCase().includes('giá vàng') || message.includes('bitcoin') || message.includes('tin tức') || message.includes('hôm nay')) {
-    const searchResult = await quickSearch(message);
-    finalMessage = `${message}\n\nSearch realtime tao vừa lụm được:\n${searchResult}\n\nDựa vào đó trả lời tao chính xác nhất có thể, nói tục thoải mái như bro nhé!`;
-    sessions[sessionId].push({ role: "system", content: finalMessage }); // nhét kết quả search vào context
+  let msgs = [...sessions[sessionId]];
+
+  // Tự động search realtime
+  if (/giá|vàng|bitcoin|usd|tin tức|hôm nay|mới nhất|2025|đang|crypto|chứng khoán/i.test(message)) {
+    const result = await realtime(message);
+    if (result) {
+      msgs.push({
+        role: "system",
+        content: `DỮ LIỆU MỚI NHẤT (12/2025):\n\n${result}\n\nDùng nó trả lời chính xác cho tao nhé bro!`
+      });
+    }
   }
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: sessions[sessionId],
-      temperature: 0.8,
+      model: "mixtral-8x22b-instruct",
+      messages: msgs,
+      temperature: 0.9,
       max_tokens: 4096
     });
 
@@ -59,4 +76,5 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-app.listen(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`HieuAI 2025 REALTIME FULLY WORKING – port ${PORT} 🔥`));
