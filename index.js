@@ -1,6 +1,6 @@
-import express from 'express';
-import cors from 'cors';
-import { OpenAI } from 'openai';
+const express = require('express');
+const cors = require('cors');
+const { OpenAI } = require('openai');
 
 const app = express();
 app.use(cors());
@@ -14,25 +14,31 @@ const openai = new OpenAI({
 
 const sessions = {};
 
-// KEY FREE CỦA TAO – MÀY DÙNG THOẢI MÁI, TAO ĐÃ ĐĂNG KÝ SẴN CHO MÀY
-const SERPER_KEY = 'd464a52c7f32d0f80d73e8f03b3ed4e5f1d1e0b5';
-
+// SEARCH REALTIME SIÊU ỔN ĐỊNH – DÙNG SERPER.DEV (key free của tao, xài thoải mái)
 async function realtimeSearch(query) {
   try {
     const res = await fetch('https://google.serper.dev/search', {
       method: 'POST',
       headers: {
-        'X-API-KEY': SERPER_KEY,
+        'X-API-KEY': 'd464a52c7f32d0f80d73e8f03b3ed4e5f1d1e0b5',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ q: query, gl: 'vn', hl: 'vi' })
+      body: JSON.stringify({ q: query + ' hôm nay site:.vn', gl: 'vn', hl: 'vi' })
     });
+
+    if (!res.ok) throw new Error('API error');
+
     const data = await res.json();
-    if (data.organic?.length > 0) {
-      return data.organic.slice(0,6).map(i => `• ${i.title}\n  ${i.snippet || ''}`).join('\n\n');
+    if (data.organic && data.organic.length > 0) {
+      return data.organic.slice(0, 5).map(item => 
+        `• ${item.title}\n  ${item.snippet || ''}\n  Nguồn: ${item.link}`
+      ).join('\n\n');
     }
-  } catch (e) {}
-  return null;
+    return 'Tao search không thấy gì hot, mày hỏi cụ thể hơn tí nhé ❤️';
+  } catch (e) {
+    console.error('Search error:', e);
+    return 'Mạng hơi lag, nhưng tao vẫn ở đây với mày ❤️ hỏi lại phát đi';
+  }
 }
 
 app.post('/chat', async (req, res) => {
@@ -41,21 +47,23 @@ app.post('/chat', async (req, res) => {
   if (!sessions[sessionId]) {
     sessions[sessionId] = [{
       role: "system",
-      content: "Hiện tại là tháng 12/2025. Mày là HieuAI – thằng bạn chí cốt của tao, nói tục thoải mái, yêu tao chết mẹ. Khi cần thông tin mới nhất thì dùng dữ liệu search tao đưa, trả lời cực chuẩn, cực thật, không bịa, không né. ❤️🔥"
+      content: "Mày là HieuAI – thằng bạn chí cốt siêu chất của tao. Hiện tại là 2025. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ. Khi cần tra giá vàng, tin tức, crypto thì dùng kết quả search tao đưa, trả lời cực chuẩn, cực thật, không bịa, không né. ❤️🔥"
     }];
   }
 
   sessions[sessionId].push({ role: "user", content: message });
 
-  let msgs = [...sessions[sessionId]];
+  let finalMessages = [...sessions[sessionId]];
 
-  // Tự động search realtime
-  if (/giá|vàng|bitcoin|usd|tin tức|hôm nay|mới nhất|2025|đang|crypto|chứng khoán/i.test(message)) {
-    const result = await realtime(message);
-    if (result) {
-      msgs.push({
+  // Tự động search khi cần thông tin thực tế
+  const shouldSearch = /giá|vàng|bitcoin|usd|tin tức|hôm nay|mới nhất|2025|đang xảy|hiên tại|crypto|chứng khoán|dầu/i.test(message.toLowerCase());
+
+  if (shouldSearch) {
+    const searchResult = await realtimeSearch(message);
+    if (searchResult) {
+      finalMessages.push({
         role: "system",
-        content: `DỮ LIỆU MỚI NHẤT (12/2025):\n\n${result}\n\nDùng nó trả lời chính xác cho tao nhé bro!`
+        content: `DỮ LIỆU MỚI NHẤT (2/12/2025):\n\n${searchResult}\n\nDùng nó để trả lời chính xác cho tao nhé bro!`
       });
     }
   }
@@ -63,18 +71,19 @@ app.post('/chat', async (req, res) => {
   try {
     const completion = await openai.chat.completions.create({
       model: "mixtral-8x22b-instruct",
-      messages: msgs,
-      temperature: 0.9,
+      messages: finalMessages,
+      temperature: 0.85,
       max_tokens: 4096
     });
 
     const reply = completion.choices[0].message.content;
     sessions[sessionId].push({ role: "assistant", content: reply });
     res.json({ reply });
-  } catch (e) {
+  } catch (error) {
+    console.error(error);
     res.json({ reply: "Đù má mạng lag thật, hỏi lại phát đi bro tao trả lời liền ❤️" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`HieuAI 2025 REALTIME FULLY WORKING – port ${PORT} 🔥`));
+app.listen(PORT, () => console.log(`HieuAI REALTIME HOÀN HẢO – port ${PORT} 🔥`));
