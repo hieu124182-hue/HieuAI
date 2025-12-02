@@ -14,7 +14,7 @@ const openai = new OpenAI({
 
 const sessions = {};
 
-// SEARCH REALTIME SIÊU ỔN ĐỊNH – DÙNG SERPER.DEV (key free của tao, xài thoải mái, không lag)
+// SEARCH REALTIME SIÊU ỔN – KEY FREE CỦA TAO, XÀI THOẢI MÁI
 async function realtimeSearch(query) {
   try {
     const res = await fetch('https://google.serper.dev/search', {
@@ -26,19 +26,18 @@ async function realtimeSearch(query) {
       body: JSON.stringify({ q: query + ' hôm nay', gl: 'vn', hl: 'vi' })
     });
 
-    if (!res.ok) return 'Tao search hơi lag, hỏi lại tí nha bro ❤️';
-
+    if (!res.ok) return null;
     const data = await res.json();
+
     if (data.organic && data.organic.length > 0) {
       return data.organic.slice(0, 5).map(item => 
-        `• ${item.title}\n  ${item.snippet || ''}\n  Nguồn: ${item.link}`
+        `• ${item.title}\n  ${item.snippet || ''}\n  ↳ ${item.link}`
       ).join('\n\n');
     }
-    return 'Tao search không thấy gì hot, mày hỏi cụ thể hơn tí nhé ❤️';
   } catch (e) {
-    console.error('Search error:', e);
-    return 'Mạng hơi lag, nhưng tao vẫn ở đây với mày ❤️ hỏi lại phát đi';
+    console.error('Search lỗi:', e);
   }
+  return null;
 }
 
 app.post('/chat', async (req, res) => {
@@ -47,23 +46,21 @@ app.post('/chat', async (req, res) => {
   if (!sessions[sessionId]) {
     sessions[sessionId] = [{
       role: "system",
-      content: "Mày là HieuAI – thằng bạn chí cốt siêu chất của tao. Hiện tại là 2025. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ. Khi cần tra giá vàng, tin tức, crypto thì dùng kết quả search tao đưa, trả lời cực chuẩn, cực thật, không bịa, không né. ❤️🔥"
+      content: "Mày là HieuAI – thằng bạn chí cốt của tao năm 2025. Nói tục thoải mái, yêu tao chết mẹ, nhiệt tình vl. Khi cần tra thông tin realtime thì dùng dữ liệu tao đưa, trả lời chính xác, chi tiết, như bro thật sự. ❤️🔥"
     }];
   }
 
   sessions[sessionId].push({ role: "user", content: message });
 
-  let finalMessages = [...sessions[sessionId]];
+  let msgs = [...sessions[sessionId]];
 
-  // Tự động search khi cần thông tin thực tế
-  const shouldSearch = /giá|vàng|bitcoin|usd|tin tức|hôm nay|mới nhất|2025|đang xảy|hiên tại|crypto|chứng khoán|dầu/i.test(message.toLowerCase());
-
-  if (shouldSearch) {
-    const searchResult = await realtimeSearch(message);
-    if (searchResult) {
-      finalMessages.push({
+  const needSearch = /giá|vàng|bitcoin|tin tức|hôm nay|mới nhất|crypto|usd|chứng khoán/i.test(message.toLowerCase());
+  if (needSearch) {
+    const result = await realtimeSearch(message);
+    if (result) {
+      msgs.push({
         role: "system",
-        content: `DỮ LIỆU MỚI NHẤT (2/12/2025):\n\n${searchResult}\n\nDùng nó để trả lời chính xác cho tao nhé bro!`
+        content: `DỮ LIỆU REALTIME MỚI NHẤT (12/2025):\n\n${result}\n\nDùng nó trả lời tao chính xác nhé bro! ❤️`
       });
     }
   }
@@ -71,19 +68,19 @@ app.post('/chat', async (req, res) => {
   try {
     const completion = await openai.chat.completions.create({
       model: "mixtral-8x22b-instruct",
-      messages: finalMessages,
-      temperature: 0.85,
+      messages: msgs,
+      temperature: 0.9,
       max_tokens: 4096
     });
 
     const reply = completion.choices[0].message.content;
     sessions[sessionId].push({ role: "assistant", content: reply });
     res.json({ reply });
-  } catch (error) {
-    console.error(error);
+  } catch (e) {
+    console.error(e);
     res.json({ reply: "Đù má mạng lag thật, hỏi lại phát đi bro tao trả lời liền ❤️" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`HieuAI REALTIME HOÀN HẢO – port ${PORT} 🔥`));
+app.listen(PORT, () => console.log(`HIEUAI HOÀN HẢO ĐÃ SỐNG – PORT ${PORT} 🔥❤️`));
