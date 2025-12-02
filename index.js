@@ -14,7 +14,7 @@ const openai = new OpenAI({
 
 const sessions = {};
 
-// SEARCH REALTIME SIÊU ỔN ĐỊNH – DÙNG SERPER.DEV (key free của tao, xài thoải mái)
+// SEARCH REALTIME SIÊU ỔN ĐỊNH – DÙNG SERPER.DEV (key free của tao, xài thoải mái, không lag)
 async function realtimeSearch(query) {
   try {
     const res = await fetch('https://google.serper.dev/search', {
@@ -23,10 +23,10 @@ async function realtimeSearch(query) {
         'X-API-KEY': 'd464a52c7f32d0f80d73e8f03b3ed4e5f1d1e0b5',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ q: query + ' hôm nay site:.vn', gl: 'vn', hl: 'vi' })
+      body: JSON.stringify({ q: query + ' hôm nay', gl: 'vn', hl: 'vi' })
     });
 
-    if (!res.ok) throw new Error('API error');
+    if (!res.ok) return 'Tao search hơi lag, hỏi lại tí nha bro ❤️';
 
     const data = await res.json();
     if (data.organic && data.organic.length > 0) {
