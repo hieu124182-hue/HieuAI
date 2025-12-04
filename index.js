@@ -10,7 +10,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// phục vụ file tĩnh trong thư mục public (index.html, js, css...)
+// Serve file tĩnh từ thư mục public (index.html, css, js…)
 app.use(express.static(path.join(__dirname, "public")));
 
 // ====== CHECK ENV ======
@@ -29,7 +29,7 @@ if (!process.env.GOOGLE_CX) {
   process.exit(1);
 }
 
-// ====== ROUTE HOME: TRẢ VỀ GIAO DIỆN ======
+// ====== HOME PAGE ======
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -39,7 +39,7 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// ====== HÀM GOOGLE SEARCH REALTIME ======
+// ====== GOOGLE SEARCH REALTIME ======
 async function googleSearch(query) {
   const url = "https://www.googleapis.com/customsearch/v1";
 
@@ -49,8 +49,8 @@ async function googleSearch(query) {
         key: process.env.GOOGLE_API_KEY,
         cx: process.env.GOOGLE_CX,
         q: query,
-        num: 3,          // lấy 3 kết quả đầu
-        lr: "lang_vi",   // ưu tiên tiếng Việt
+        num: 3,
+        lr: "lang_vi",
       },
     });
 
@@ -58,7 +58,6 @@ async function googleSearch(query) {
       return "Kết quả Google: không tìm thấy thông tin phù hợp.";
     }
 
-    // format gọn để nhét vào prompt
     const lines = res.data.items.map((item, i) => {
       const snippet = (item.snippet || "").replace(/\s+/g, " ").trim();
       return `Kết quả ${i + 1}:
@@ -69,38 +68,47 @@ Link: ${item.link}`;
 
     return lines.join("\n\n");
   } catch (err) {
-    console.error("Google Search error:", err.response?.data || err.message);
-    // trả về chuỗi có tag LỖI_GOOGLE để model hiểu là google fail
-    return `LỖI_GOOGLE: ${err.response?.data?.error?.message || err.message}`;
+    // In lỗi Google siêu chi tiết để bro đọc trong Render Logs
+    console.error("=== GOOGLE SEARCH ERROR ===");
+    console.error("Status:", err.response?.status);
+    console.error("Data:", err.response?.data);
+    console.error("Message:", err.message);
+    console.error("============================");
+
+    const msg =
+      err.response?.data?.error?.message ||
+      err.message ||
+      "Không rõ lỗi Google";
+
+    return `LỖI_GOOGLE: ${msg}`;
   }
 }
 
-// ====== API /chat ======
+// ====== CHAT API ======
 app.post("/chat", async (req, res) => {
   try {
     const userPrompt = req.body.prompt || "";
 
-    // 1. gọi Google realtime
+    // 1. Gọi Google realtime
     const googleData = await googleSearch(userPrompt);
 
-    // 2. gửi cả câu hỏi + dữ liệu Google cho OpenAI
+    // 2. Gửi vào OpenAI
     const messages = [
       {
         role: "system",
         content:
-          "Bạn là trợ lý AI tiếng Việt, luôn ưu tiên dùng dữ liệu Google được cung cấp. " +
-          "Nếu chuỗi 'LỖI_GOOGLE' xuất hiện trong dữ liệu Google thì xin lỗi người dùng, " +
-          "nói rõ là Google bị lỗi hoặc không truy cập được, nhưng vẫn cố gắng trả lời dựa trên kiến thức của bạn (có thể không cập nhật).",
+          "Bạn là trợ lý AI tiếng Việt. Hãy ưu tiên dùng dữ liệu từ Google nếu có. " +
+          "Nếu chuỗi 'LỖI_GOOGLE' xuất hiện trong dữ liệu, hãy xin lỗi người dùng " +
+          "và cho biết Google đang lỗi, sau đó trả lời dựa trên kiến thức của bạn.",
       },
       {
         role: "user",
-content: `Câu hỏi của người dùng: ${userPrompt}
+        content: `Câu hỏi của người dùng: ${userPrompt}
 
-Dữ liệu Google theo thời gian thực (nếu có):
-
+Dữ liệu Google realtime:
 ${googleData}
 
-Hãy trả lời ngắn gọn, rõ ràng, ưu tiên dựa trên dữ liệu Google.`,
+Hãy trả lời ngắn gọn, tự nhiên.`,
       },
     ];
 
@@ -112,25 +120,22 @@ Hãy trả lời ngắn gọn, rõ ràng, ưu tiên dựa trên dữ liệu Goog
 
     res.json({
       reply: completion.choices[0].message.content,
-      googleData, // gửi kèm luôn kết quả Google nếu bro muốn show ở frontend
+      googleData,
     });
   } catch (err) {
-    console.error("Chat error:", err.response?.data || err.message);
-    res.status(500).json({
-      reply: "Lỗi server, bro thử lại sau nhé.",
-    });
+    console.error("Chat error:", err);
+    res.status(500).json({ reply: "Lỗi server, bro thử lại sau nhé." });
   }
 });
 
-// ====== ROUTE DEBUG GOOGLE (test trực tiếp trên browser) ======
+// ====== DEBUG ROUTE: TEST GOOGLE ======
 app.get("/debug-google", async (req, res) => {
   try {
-    const q = req.query.q || "tin tức Việt Nam hôm nay";
-    const data = await googleSearch(q);
-    res.type("text/plain").send(data);
-  } catch (e) {
-    console.error(e);
-    res.status(500).send("Debug Google bị lỗi.");
+    const q = req.query.q || "tin tức hôm nay";
+    const result = await googleSearch(q);
+    res.type("text/plain").send(result);
+  } catch (err) {
+    res.status(500).send("Debug Google error.");
   }
 });
 
