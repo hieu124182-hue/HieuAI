@@ -9,6 +9,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// phục vụ file tĩnh trong folder public (js, css, ảnh...)
+app.use(express.static(path.join(__dirname, "public")));
+
 // Check env
 if (!process.env.OPENAI_API_KEY) {
   console.error("ERROR: OPENAI_API_KEY is missing!");
@@ -25,11 +28,10 @@ if (!process.env.GOOGLE_CX) {
   process.exit(1);
 }
 
-// ---- THÊM ROUTE GET / ĐỂ TRẢ VỀ index.html ----
+// ✅ ROUTE HOME: trả đúng file public/index.html
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
-// ------------------------------------------------
 
 // OpenAI client
 const client = new OpenAI({
@@ -89,7 +91,7 @@ Hãy trả lời tự nhiên, ngắn gọn.
   }
 });
 
-// ---- SỬ DỤNG PORT CỦA RENDER ----
+// ✅ BẮT BUỘC dùng PORT của Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Server chạy tại port " + PORT);
