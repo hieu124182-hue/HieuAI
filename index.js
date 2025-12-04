@@ -10,7 +10,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve file tĩnh từ thư mục public (index.html, css, js…)
+// serve giao diện + file tĩnh
 app.use(express.static(path.join(__dirname, "public")));
 
 // ====== CHECK ENV ======
@@ -18,18 +18,16 @@ if (!process.env.OPENAI_API_KEY) {
   console.error("ERROR: OPENAI_API_KEY is missing!");
   process.exit(1);
 }
-
 if (!process.env.GOOGLE_API_KEY) {
   console.error("ERROR: GOOGLE_API_KEY is missing!");
   process.exit(1);
 }
-
 if (!process.env.GOOGLE_CX) {
   console.error("ERROR: GOOGLE_CX is missing!");
   process.exit(1);
 }
 
-// ====== HOME PAGE ======
+// home page
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -39,7 +37,7 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// ====== GOOGLE SEARCH REALTIME ======
+// ====== GOOGLE SEARCH REALTIME (TRẢ VỀ OBJECT) ======
 async function googleSearch(query) {
   const url = "https://www.googleapis.com/customsearch/v1";
 
@@ -55,7 +53,11 @@ async function googleSearch(query) {
     });
 
     if (!res.data.items || res.data.items.length === 0) {
-      return "Kết quả Google: không tìm thấy thông tin phù hợp.";
+      // gọi được Google nhưng không có kết quả phù hợp
+      return {
+        status: "empty",
+        text: "Google đã được gọi thành công nhưng không tìm thấy kết quả phù hợp cho câu hỏi này.",
+      };
     }
 
     const lines = res.data.items.map((item, i) => {
@@ -66,9 +68,11 @@ Mô tả: ${snippet}
 Link: ${item.link}`;
     });
 
-    return lines.join("\n\n");
+    return {
+      status: "ok",
+      text: lines.join("\n\n"),
+    };
   } catch (err) {
-    // In lỗi Google siêu chi tiết để bro đọc trong Render Logs
     console.error("=== GOOGLE SEARCH ERROR ===");
     console.error("Status:", err.response?.status);
     console.error("Data:", err.response?.data);
@@ -80,47 +84,63 @@ Link: ${item.link}`;
       err.message ||
       "Không rõ lỗi Google";
 
-    return `LỖI_GOOGLE: ${msg}`;
+    // lỗi kỹ thuật thật sự
+    return {
+      status: "error",
+      text: msg,
+    };
   }
 }
 
 // ====== CHAT API ======
 app.post("/chat", async (req, res) => {
   try {
-    const userPrompt = req.body.prompt || "";
+    const userPrompt = req.body.prompt || req.body.message || "";
 
-    // 1. Gọi Google realtime
-    const googleData = await googleSearch(userPrompt);
+    const googleResult = await googleSearch(userPrompt);
 
-    // 2. Gửi vào OpenAI
-    const messages = [
-      {
-        role: "system",
-        content:
-          "Bạn là trợ lý AI tiếng Việt. Hãy ưu tiên dùng dữ liệu từ Google nếu có. " +
-          "Nếu chuỗi 'LỖI_GOOGLE' xuất hiện trong dữ liệu, hãy xin lỗi người dùng " +
-          "và cho biết Google đang lỗi, sau đó trả lời dựa trên kiến thức của bạn.",
-      },
-      {
-        role: "user",
-        content: `Câu hỏi của người dùng: ${userPrompt}
+    let systemContent =
+      "Bạn là HieuAI. Bạn LUÔN cố gắng sử dụng dữ liệu Google nếu có.\n" +
+      "- Nếu status = 'ok' thì phải ưu tiên dùng thông tin trong các kết quả Google, cố gắng trích số liệu, ngày tháng, chi tiết.\n" +
+"- Nếu status = 'empty' thì nói rõ là Google không tìm thấy kết quả phù hợp, nhưng KHÔNG được nói Google bị lỗi, rồi trả lời dựa trên kiến thức của bạn (có thể không cập nhật).\n" +
+      "- Nếu status = 'error' thì mới được nói rằng Google đang gặp lỗi kỹ thuật, sau đó trả lời dựa trên kiến thức của bạn.\n" +
+      "Tuyệt đối KHÔNG nói Google lỗi nếu status khác 'error'.";
 
-Dữ liệu Google realtime:
-${googleData}
+    let userContent = `Câu hỏi của người dùng: ${userPrompt}\n\n`;
 
-Hãy trả lời ngắn gọn, tự nhiên.`,
-      },
-    ];
+    if (googleResult.status === "ok") {
+      userContent +=
+        "Status Google: ok\n" +
+        "Dưới đây là các kết quả Google realtime, hãy dùng làm nguồn chính để trả lời:\n\n" +
+        googleResult.text;
+    } else if (googleResult.status === "empty") {
+      userContent +=
+        "Status Google: empty\n" +
+        "Thông tin: Google đã được gọi thành công nhưng không tìm thấy kết quả phù hợp.\n" +
+        "Hãy giải thích cho người dùng, sau đó trả lời dựa trên hiểu biết của bạn.";
+    } else {
+      // error
+      userContent +=
+        "Status Google: error\n" +
+        "Thông báo lỗi kỹ thuật từ Google: " +
+        googleResult.text +
+        "\n" +
+        "Hãy xin lỗi vì lỗi kỹ thuật này và trả lời dựa trên kiến thức sẵn có của bạn (không cần realtime).";
+    }
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      messages,
+      messages: [
+        { role: "system", content: systemContent },
+        { role: "user", content: userContent },
+      ],
       temperature: 0.2,
     });
 
     res.json({
       reply: completion.choices[0].message.content,
-      googleData,
+      googleStatus: googleResult.status, // cho frontend debug nếu thích
+      googleText: googleResult.text,
     });
   } catch (err) {
     console.error("Chat error:", err);
@@ -128,12 +148,15 @@ Hãy trả lời ngắn gọn, tự nhiên.`,
   }
 });
 
-// ====== DEBUG ROUTE: TEST GOOGLE ======
+// ====== DEBUG GOOGLE ======
 app.get("/debug-google", async (req, res) => {
   try {
     const q = req.query.q || "tin tức hôm nay";
     const result = await googleSearch(q);
-    res.type("text/plain").send(result);
+    res.type("text/plain").send(
+      `Status: ${result.status}\n\n` +
+        result.text
+    );
   } catch (err) {
     res.status(500).send("Debug Google error.");
   }
