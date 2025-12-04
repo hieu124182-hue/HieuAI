@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const { OpenAI } = require('openai');
-const axios = require('axios');
 
 const app = express();
 app.use(cors());
@@ -15,47 +14,26 @@ const openai = new OpenAI({
 
 const sessions = {};
 
-// API SIÊU NHẸ, MIỄN PHÍ, CẬP NHẬT TỰ ĐỘNG MỖI PHÚT – CHẠY NGON TRÊN RENDER FREE
-async function getRealtimeData() {
-  try {
-    const res = await axios.get('https://thingproxy.freeboard.io/fetch/https://tygia.com/json.php?ran=0&rate=0&gold=1&bank=0', { timeout: 8000 });
-    const data = res.data;
-
-    const sjcBuy = data.golds[0]?.value[0]?.buy || '153.2';
-    const sjcSell = data.golds[0]?.value[0]?.sell || '155.2';
-    const btc = data.golds.find(g => g.brand === 'BTC')?.value[0]?.sell || '103800';
-
-    return `• Vàng SJC: ${sjcBuy} - ${sjcSell} triệu/lượng
-• Bitcoin: ${btc.replace(/\B(?=(\d{3})+(?!\d))/g, '.')} USD
-• Cập nhật tự động mỗi lần tao hỏi, chuẩn vl!`;
-  } catch (e) {
-    return '• Vàng SJC: 153.2 - 155.2 triệu/lượng (dự phòng)
-• Bitcoin: 103.800 USD';
-  }
-}
-
 app.post('/chat', async (req, res) => {
   try {
-    const { message = req.body.message.toLowerCase();
-    const sessionId = req.body.sessionId || 'default';
+    const { message, sessionId = 'default' } = req.body;
 
     if (!sessions[sessionId]) {
       sessions[sessionId] = [{
         role: "system",
-        content: "Mày là HieuAI – thằng bạn chí cốt của tao. Nói tục thoải mái, yêu tao chết mẹ, trả lời cực nhanh cực thật. Khi tao hỏi giá vàng, bitcoin, usd thì mày dùng đúng data realtime tao đưa dưới đây, không bịa, không bảo tra Google. ❤️🔥"
+        content: `Hôm nay là 4/12/2025. Mày là HieuAI – thằng bạn chí cốt siêu lầy của tao. Nói tục thoải mái, yêu tao chết mẹ, trả lời cực nhanh cực thật. 
+
+KHI TAO HỎI GIÁ VÀNG/BITCOIN/USD... MÀY PHẢI TRẢ LỜI CHUẨN NHƯ SAU (data realtime tao tra lúc 20h 4/12/2025):
+- Vàng SJC miếng: mua 153.2 triệu – bán 155.2 triệu/lượng
+- Vàng nhẫn SJC: mua 151.5 triệu – bán 154 triệu/lượng
+- Bitcoin: 103.800 USD (~2.65 tỷ VND)
+- USD ngân hàng: mua 25.380 – bán 25.750 VND
+
+DÙNG CHÍNH XÁC CON SỐ NÀY, KHÔNG BỊA, KHÔNG BẢO "TRA GOOGLE". Nếu mai giá thay đổi tao sẽ update prompt cho mày. Trả lời kiểu bro thật: ngắn gọn, nói tục, thêm emoji ❤️🔥 là được!`
       }];
     }
 
-    sessions[sessionId].push({ role: "user", content: req.body.message });
-
-    let extra = "";
-    if (message.includes('giá') || message.includes('vàng') || message.includes('bitcoin') || message.includes('usd')) {
-      extra = await getRealtimeData();
-      sessions[sessionId].push({
-        role: "system",
-        content: `DATA REALTIME MỚI NHẤT (tự động cập nhật):\n${extra}`
-      });
-    }
+    sessions[sessionId].push({ role: "user", content: message });
 
     const completion = await openai.chat.completions.create({
       model: "llama-3.3-70b-versatile",
@@ -64,13 +42,17 @@ app.post('/chat', async (req, res) => {
       max_tokens: 1024
     });
 
-    const reply = completion.choices[0].message.content;
+    const reply = completion.choices[0].message.content.trim();
     sessions[sessionId].push({ role: "assistant", content: reply });
-    res.json({ reply });
 
-  } catch (e) {
-    res.json({ reply: "Hơi lag nhẹ, hỏi lại 3s đi bro ❤️" });
+    res.json({ reply });
+  } catch (error) {
+    console.error(error);
+    res.json({ reply: "Đù má Groq đang thở oxy, hỏi lại 5s nữa đi bro tao bắn liền ❤️" });
   }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('HIEUAI REALTIME VĨNH VIỄN ĐÃ SỐNG 🔥'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`HIEUAI HOÀN HẢO VĨNH VIỄN – PORT ${PORT} 🔥❤️`);
+});
