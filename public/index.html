@@ -6,15 +6,78 @@
   <title>HieuAI 🔥</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;font-family:system-ui}
-    #header{padding:20px;text-align:center;font-size:28px;background:linear-gradient(90deg,#ff2483,#00ff9d);-webkit-background-clip:text;color:transparent}
-    #messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:15px}
-    .msg{max-width:85%;padding:14px 18px;border-radius:20px;line-height:1.5;word-wrap:break-word}
-    .ai{background:#1e1e1e;align-self:flex-start;border-bottom-left-radius:4px}
-    .user{background:#00ff9d;color:#000;align-self:flex-end;border-bottom-right-radius:4px}
-    #input-box{padding:15px;display:flex;gap:10px;background:#111}
-    input{flex:1;padding:18px;border:none;border-radius:50px;background:#222;color:#fff;font-size:18px;outline:none}
-    button{width:60px;height:60px;border-radius:50%;border:none;background:#00ff9d;font-size:28px;cursor:pointer}
+    body{
+      background:#000;
+      color:#fff;
+      height:100vh;
+      display:flex;
+      flex-direction:column;
+      font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #header{
+      padding:20px;
+      text-align:center;
+      font-size:28px;
+      background:linear-gradient(90deg,#ff2483,#00ff9d);
+      -webkit-background-clip:text;
+      color:transparent;
+    }
+    #messages{
+      flex:1;
+      overflow-y:auto;
+      padding:20px;
+      display:flex;
+      flex-direction:column;
+      gap:15px;
+    }
+    .msg{
+      max-width:85%;
+      padding:14px 18px;
+      border-radius:20px;
+      line-height:1.5;
+      word-wrap:break-word;
+      white-space:pre-wrap;
+      font-size:16px;
+    }
+    .ai{
+      background:#1e1e1e;
+      align-self:flex-start;
+      border-bottom-left-radius:4px;
+    }
+    .user{
+      background:#00ff9d;
+      color:#000;
+      align-self:flex-end;
+      border-bottom-right-radius:4px;
+    }
+    #input-box{
+      padding:15px;
+      display:flex;
+      gap:10px;
+      background:#111;
+    }
+    input{
+      flex:1;
+      padding:18px;
+      border:none;
+      border-radius:50px;
+      background:#222;
+      color:#fff;
+      font-size:18px;
+      outline:none;
+    }
+    button{
+      width:60px;
+      height:60px;
+      border-radius:50%;
+      border:none;
+      background:#00ff9d;
+      font-size:28px;
+      cursor:pointer;
+    }
+    button:active{
+      transform:scale(0.96);
+    }
   </style>
 </head>
 <body>
@@ -41,6 +104,8 @@
       const input = document.getElementById('msg');
       const text = input.value.trim();
       if (!text) return;
+
+      // hiển thị tin nhắn người dùng
       add(text, 'user');
       input.value = '';
 
@@ -48,11 +113,14 @@
         const res = await fetch('/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, sessionId })
+          // ✅ gửi đúng "prompt" cho backend
+          body: JSON.stringify({ prompt: text, sessionId })
         });
+
         const data = await res.json();
-        add(data.reply, 'ai');
-      } catch (e) {
+        add(data.reply || "Không nhận được trả lời từ server.", 'ai');
+} catch (e) {
+        console.error(e);
         add("Mạng lag tí bro, gửi lại đi ❤️", 'ai');
       }
     }
@@ -62,6 +130,7 @@
       if (e.key === 'Enter') send();
     });
 
+    // tin nhắn chào
     add("Ê bro, thằng bạn chí cốt đây! Muốn viết code hay tìm tin tức gì cứ đập – tao chơi hết! ❤️", 'ai');
   </script>
 </body>
