@@ -1,5 +1,5 @@
 {
-  "name": "hieuai",
+  "name": "hieuai-grok-real",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,6 @@
   "dependencies": {
     "express": "^4.19.2",
     "cors": "^2.8.5",
-    "openai": "^4.56.0",
-    "node-fetch": "^3.3.2"
+    "openai": "^4.56.0"
   }
 }
