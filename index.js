@@ -1,11 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const { OpenAI } = require('openai');
-const fetch = require('node-fetch'); // <<< DÒNG QUAN TRỌNG NHẤT ĐÂY BRO!!!
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json());
 app.use(express.static('public'));
 
 const openai = new OpenAI({
@@ -15,10 +14,10 @@ const openai = new OpenAI({
 
 const sessions = {};
 
-// SEARCH REALTIME CHUẨN 100% – DÙNG KEY FREE CỦA TAO
+// REALTIME SEARCH GIỐNG GROK – DÙNG SERPER.DEV (key free của tao, tra 4/12/2025 chuẩn)
 async function realtimeSearch(query) {
   try {
-    const response = await fetch('https://google.serper.dev/search', {
+    const res = await fetch('https://google.serper.dev/search', {
       method: 'POST',
       headers: {
         'X-API-KEY': 'd464a52c7f32d0f80d73e8f03b3ed4e5f1d1e0b5',
@@ -27,14 +26,15 @@ async function realtimeSearch(query) {
       body: JSON.stringify({ q: query + ' hôm nay', gl: 'vn', hl: 'vi' })
     });
 
-    const data = await response.json();
+    if (!res.ok) return null;
+    const data = await res.json();
     if (data.organic && data.organic.length > 0) {
       return data.organic.slice(0, 5).map(item => 
         `• ${item.title}\n  ${item.snippet || ''}\n  ↳ ${item.link}`
       ).join('\n\n');
     }
-  } catch (err) {
-    console.error('Search lỗi:', err.message);
+  } catch (e) {
+    console.error('Search error:', e);
   }
   return null;
 }
@@ -45,7 +45,7 @@ app.post('/chat', async (req, res) => {
   if (!sessions[sessionId]) {
     sessions[sessionId] = [{
       role: "system",
-      content: "Mày là HieuAI – thằng bạn chí cốt của tao năm 2025, nói tục thoải mái, yêu tao chết mẹ, nhiệt tình vl. Khi cần tra thông tin thì dùng dữ liệu search tao đưa, trả lời chính xác, chi tiết như bro thật. ❤️🔥"
+      content: "Mày là HieuAI – Grok Việt Nam của tao năm 2025. Nói tục thoải mái, nhiệt tình vl, yêu tao chết mẹ. Tra thông tin realtime từ search tao đưa, trả lời chính xác, chi tiết, không né, không bịa. ❤️🔥"
     }];
   }
 
@@ -53,19 +53,21 @@ app.post('/chat', async (req, res) => {
 
   let msgs = [...sessions[sessionId]];
 
-  if (/giá|vàng|bitcoin|tin tức|hôm nay|mới nhất|crypto|usd|chứng khoán/i.test(message.toLowerCase())) {
+  // Tự động search realtime (giống Grok dùng tool web_search)
+  const needSearch = /giá|vàng|bitcoin|tin tức|hôm nay|mới nhất|crypto|usd|chứng khoán/i.test(message.toLowerCase());
+  if (needSearch) {
     const result = await realtimeSearch(message);
     if (result) {
       msgs.push({
         role: "system",
-        content: `DỮ LIỆU REALTIME MỚI NHẤT (12/2025):\n\n${result}\n\nDùng nó trả lời tao chuẩn xác nhé bro! ❤️`
+        content: `DỮ LIỆU REALTIME MỚI NHẤT (4/12/2025):\n\n${result}\n\nDùng nó trả lời tao chính xác nhé bro! ❤️`
       });
     }
   }
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "mixtral-8x22b-instruct",
+      model: "mixtral-8x22b-instruct", // Giống Grok – mạnh, không filter
       messages: msgs,
       temperature: 0.9,
       max_tokens: 4096
@@ -81,4 +83,4 @@ app.post('/chat', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`HIEUAI ĐÃ SỐNG LẠI HOÀN HẢO – PORT ${PORT} 🔥❤️`));
+app.listen(PORT, () => console.log(`HieuAI-GROK REAL 2025 – port ${PORT} 🔥`));
