@@ -37,7 +37,42 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// ====== GOOGLE SEARCH REALTIME (TRẢ VỀ OBJECT) ======
+// ====== HÀM QUYẾT ĐỊNH CÓ CẦN GOOGLE KHÔNG ======
+function shouldUseGoogle(prompt) {
+  const p = (prompt || "").toLowerCase();
+
+  // nếu user bảo rõ ràng
+  if (p.includes("tìm trên google") || p.includes("tra google") || p.includes("search trên google")) {
+    return true;
+  }
+  if (p.includes("đừng dùng google") || p.includes("không cần google")) {
+    return false;
+  }
+
+  // các từ khoá kiểu realtime / tin tức
+  const realtimeKeywords = [
+    "hôm nay",
+    "hiện nay",
+    "mới nhất",
+    "gần đây",
+    "bây giờ",
+    "giá vàng",
+    "giá xăng",
+    "giá usd",
+    "giá bitcoin",
+    "bitcoin hôm nay",
+    "tỷ giá",
+    "tỉ giá",
+    "lãi suất",
+    "thời tiết",
+    "tin tức",
+    "news",
+  ];
+
+  return realtimeKeywords.some((k) => p.includes(k));
+}
+
+// ====== GOOGLE SEARCH REALTIME (trả về object) ======
 async function googleSearch(query) {
   const url = "https://www.googleapis.com/customsearch/v1";
 
@@ -53,7 +88,7 @@ async function googleSearch(query) {
     });
 
     if (!res.data.items || res.data.items.length === 0) {
-      // gọi được Google nhưng không có kết quả phù hợp
+      // gọi được nhưng không có kết quả
       return {
         status: "empty",
         text: "Google đã được gọi thành công nhưng không tìm thấy kết quả phù hợp cho câu hỏi này.",
@@ -78,13 +113,11 @@ Link: ${item.link}`;
     console.error("Data:", err.response?.data);
     console.error("Message:", err.message);
     console.error("============================");
-
-    const msg =
+const msg =
       err.response?.data?.error?.message ||
       err.message ||
       "Không rõ lỗi Google";
 
-    // lỗi kỹ thuật thật sự
     return {
       status: "error",
       text: msg,
@@ -96,15 +129,40 @@ Link: ${item.link}`;
 app.post("/chat", async (req, res) => {
   try {
     const userPrompt = req.body.prompt || req.body.message || "";
+    const useGoogle = shouldUseGoogle(userPrompt);
 
+    // Nếu không cần Google => chat như bình thường
+    if (!useGoogle) {
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Bạn là HieuAI thân thiện, nói chuyện tự nhiên, ngắn gọn, dễ hiểu.",
+          },
+          {
+            role: "user",
+            content: userPrompt,
+          },
+        ],
+        temperature: 0.7,
+      });
+
+      return res.json({
+        reply: completion.choices[0].message.content,
+        googleStatus: "skip",
+      });
+    }
+
+    // Còn nếu cần Google => gọi Google + trộn dữ liệu
     const googleResult = await googleSearch(userPrompt);
 
     let systemContent =
-      "Bạn là HieuAI. Bạn LUÔN cố gắng sử dụng dữ liệu Google nếu có.\n" +
-      "- Nếu status = 'ok' thì phải ưu tiên dùng thông tin trong các kết quả Google, cố gắng trích số liệu, ngày tháng, chi tiết.\n" +
-"- Nếu status = 'empty' thì nói rõ là Google không tìm thấy kết quả phù hợp, nhưng KHÔNG được nói Google bị lỗi, rồi trả lời dựa trên kiến thức của bạn (có thể không cập nhật).\n" +
-      "- Nếu status = 'error' thì mới được nói rằng Google đang gặp lỗi kỹ thuật, sau đó trả lời dựa trên kiến thức của bạn.\n" +
-      "Tuyệt đối KHÔNG nói Google lỗi nếu status khác 'error'.";
+      "Bạn là HieuAI. Hãy sử dụng dữ liệu Google nếu có.\n" +
+      "- Nếu status = 'ok' thì ưu tiên dùng thông tin trong kết quả Google.\n" +
+      "- Nếu status = 'empty' thì nói rõ là Google không có kết quả phù hợp, nhưng KHÔNG được nói Google bị lỗi.\n" +
+      "- Nếu status = 'error' thì mới được nói Google đang gặp lỗi, sau đó trả lời dựa trên kiến thức của bạn.\n";
 
     let userContent = `Câu hỏi của người dùng: ${userPrompt}\n\n`;
 
@@ -117,9 +175,8 @@ app.post("/chat", async (req, res) => {
       userContent +=
         "Status Google: empty\n" +
         "Thông tin: Google đã được gọi thành công nhưng không tìm thấy kết quả phù hợp.\n" +
-        "Hãy giải thích cho người dùng, sau đó trả lời dựa trên hiểu biết của bạn.";
+        "Hãy giải thích ngắn gọn cho người dùng và trả lời dựa trên hiểu biết của bạn.";
     } else {
-      // error
       userContent +=
         "Status Google: error\n" +
         "Thông báo lỗi kỹ thuật từ Google: " +
@@ -139,8 +196,8 @@ app.post("/chat", async (req, res) => {
 
     res.json({
       reply: completion.choices[0].message.content,
-      googleStatus: googleResult.status, // cho frontend debug nếu thích
-      googleText: googleResult.text,
+      googleStatus: googleResult.status,
+googleText: googleResult.text,
     });
   } catch (err) {
     console.error("Chat error:", err);
@@ -153,10 +210,7 @@ app.get("/debug-google", async (req, res) => {
   try {
     const q = req.query.q || "tin tức hôm nay";
     const result = await googleSearch(q);
-    res.type("text/plain").send(
-      `Status: ${result.status}\n\n` +
-        result.text
-    );
+    res.type("text/plain").send(`Status: ${result.status}\n\n${result.text}`);
   } catch (err) {
     res.status(500).send("Debug Google error.");
   }
