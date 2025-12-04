@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const OpenAI = require("openai");
+const path = require("path");
 
 const app = express();
 app.use(cors());
@@ -23,6 +24,12 @@ if (!process.env.GOOGLE_CX) {
   console.error("ERROR: GOOGLE_CX is missing!");
   process.exit(1);
 }
+
+// ---- THÊM ROUTE GET / ĐỂ TRẢ VỀ index.html ----
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+// ------------------------------------------------
 
 // OpenAI client
 const client = new OpenAI({
@@ -82,7 +89,8 @@ Hãy trả lời tự nhiên, ngắn gọn.
   }
 });
 
-// Start
-app.listen(3000, () => {
-  console.log("Server chạy tại port 3000");
+// ---- SỬ DỤNG PORT CỦA RENDER ----
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Server chạy tại port " + PORT);
 });
