@@ -1,7 +1,6 @@
 {
   "name": "realtime-ai-server",
   "version": "1.0.0",
-  "description": "Simple AI backend with real-time data",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
