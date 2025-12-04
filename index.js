@@ -8,39 +8,50 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Check env
+if (!process.env.OPENAI_API_KEY) {
+  console.error("ERROR: OPENAI_API_KEY is missing!");
+  process.exit(1);
+}
+
+if (!process.env.GOOGLE_API_KEY) {
+  console.error("ERROR: GOOGLE_API_KEY is missing!");
+  process.exit(1);
+}
+
+if (!process.env.GOOGLE_CX) {
+  console.error("ERROR: GOOGLE_CX is missing!");
+  process.exit(1);
+}
+
 // OpenAI client
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Google Search API
-const GOOGLE_KEY = process.env.GOOGLE_API_KEY;
-const GOOGLE_CX = process.env.GOOGLE_CX;
-
+// Google search
 async function googleSearch(query) {
   try {
     const url = "https://www.googleapis.com/customsearch/v1";
 
     const res = await axios.get(url, {
       params: {
-        key: GOOGLE_KEY,
-        cx: GOOGLE_CX,
+        key: process.env.GOOGLE_API_KEY,
+        cx: process.env.GOOGLE_CX,
         q: query
       }
     });
 
-    if (!res.data.items || res.data.items.length === 0) {
-      return "Không tìm thấy thông tin trên Google.";
-    }
+    if (!res.data.items) return "Không có kết quả.";
 
-    // Lấy 3 kết quả đầu
-    let snippets = res.data.items.slice(0, 3).map(item => {
-      return `- ${item.title}: ${item.snippet}`;
-    });
+    return res.data.items
+      .slice(0, 3)
+      .map(i => `- ${i.title}: ${i.snippet}`)
+      .join("\n");
 
-    return snippets.join("\n");
   } catch (err) {
-    return "Lỗi khi truy vấn Google.";
+    console.log(err);
+    return "Google Search lỗi.";
   }
 }
 
@@ -48,32 +59,30 @@ app.post("/chat", async (req, res) => {
   try {
     const userPrompt = req.body.prompt;
 
-    // Google Search
     const googleData = await googleSearch(userPrompt);
 
     const fullPrompt = `
 Người dùng hỏi: ${userPrompt}.
-Dưới đây là dữ liệu Google real-time:
+Kết quả Google real-time:
 ${googleData}
 
-Hãy trả lời ngắn gọn, rõ ràng.
+Hãy trả lời tự nhiên, ngắn gọn.
     `;
 
-    const completion = await client.chat.completions.create({
+    const r = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        { role: "user", content: fullPrompt }
-      ]
+      messages: [{ role: "user", content: fullPrompt }]
     });
 
-    res.json({ reply: completion.choices[0].message.content });
+    res.json({ reply: r.choices[0].message.content });
 
   } catch (err) {
     console.log(err);
-    res.json({ reply: "Lỗi hệ thống." });
+    res.json({ reply: "Lỗi server." });
   }
 });
 
+// Start
 app.listen(3000, () => {
-  console.log("Server đang chạy trên port 3000");
+  console.log("Server chạy tại port 3000");
 });
