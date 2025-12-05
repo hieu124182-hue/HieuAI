@@ -37,6 +37,29 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// ====== BỘ NHỚ LỊCH SỬ THEO SESSION ======
+const sessions = {}; // { [sessionId]: [{ role, content }, ...] }
+
+function getSessionHistory(sessionId) {
+  if (!sessionId) sessionId = "default";
+  if (!sessions[sessionId]) sessions[sessionId] = [];
+  return sessions[sessionId];
+}
+
+function saveToHistory(sessionId, userText, assistantText) {
+  if (!sessionId) sessionId = "default";
+  if (!sessions[sessionId]) sessions[sessionId] = [];
+
+  sessions[sessionId].push({ role: "user", content: userText });
+  sessions[sessionId].push({ role: "assistant", content: assistantText });
+
+  // chỉ giữ khoảng 20 message cuối cho nhẹ
+  const MAX_MESSAGES = 20;
+  if (sessions[sessionId].length > MAX_MESSAGES) {
+    sessions[sessionId] = sessions[sessionId].slice(-MAX_MESSAGES);
+  }
+}
+
 // ====== HÀM QUYẾT ĐỊNH CÓ CẦN GOOGLE KHÔNG (CHO HỌC TẬP) ======
 function shouldUseGoogle(prompt) {
   const p = (prompt || "").toLowerCase();
@@ -87,7 +110,7 @@ function shouldUseGoogle(prompt) {
     "kiểm tra",
     "đề thi",
     "trắc nghiệm",
-    "tự luận",
+"tự luận",
     "môn toán",
     "toán",
     "vật lý",
@@ -112,7 +135,6 @@ function shouldUseGoogle(prompt) {
     "pascal",
   ];
 
-  // nếu là câu hỏi (có dấu ? hoặc mấy từ khóa trên) thì coi như cần kiến thức -> gọi google
   if (p.includes("?") || studyKeywords.some((k) => p.includes(k))) {
     return true;
   }
@@ -126,7 +148,7 @@ async function googleSearch(query) {
   const url = "https://www.googleapis.com/customsearch/v1";
 
   try {
-const res = await axios.get(url, {
+    const res = await axios.get(url, {
       params: {
         key: process.env.GOOGLE_API_KEY,
         cx: process.env.GOOGLE_CX,
@@ -176,34 +198,40 @@ Link: ${item.link}`;
   }
 }
 
-// ====== CHAT API ======
+// ====== CHAT API (CÓ NHỚ LỊCH SỬ) ======
 app.post("/chat", async (req, res) => {
   try {
     const userPrompt = req.body.prompt || req.body.message || "";
+    const sessionId = req.body.sessionId || "default";
     const useGoogle = shouldUseGoogle(userPrompt);
+
+    const history = getSessionHistory(sessionId); // [{role, content}, ...]
 
     // ===== Không cần Google: trợ lý học tập nói chuyện bình thường =====
     if (!useGoogle) {
+      const messages = [
+        {
+          role: "system",
+          content:
+            "Bạn là TRỢ LÝ HỌC TẬP bằng tiếng Việt cho học sinh cấp 2, cấp 3. " +
+            "Hãy giải thích dễ hiểu, từng bước, khuyến khích học sinh tự suy nghĩ, " +
+            "hạn chế làm hộ toàn bộ bài. Có thể nói chuyện thoải mái, thân thiện.",
+        },
+        ...history,
+        { role: "user", content: userPrompt },
+      ];
+
       const completion = await client.chat.completions.create({
         model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Bạn là TRỢ LÝ HỌC TẬP bằng tiếng Việt cho học sinh cấp 2, cấp 3. " +
-              "Hãy giải thích dễ hiểu, từng bước, khuyến khích học sinh tự suy nghĩ, " +
-              "hạn chế làm hộ toàn bộ bài. Có thể nói chuyện thoải mái, thân thiện.",
-          },
-          {
-            role: "user",
-            content: userPrompt,
-          },
-        ],
+messages,
         temperature: 0.7,
       });
 
+      const reply = completion.choices[0].message.content;
+      saveToHistory(sessionId, userPrompt, reply);
+
       return res.json({
-        reply: completion.choices[0].message.content,
+        reply,
         googleStatus: "skip",
       });
     }
@@ -215,8 +243,8 @@ app.post("/chat", async (req, res) => {
       "Bạn là TRỢ LÝ HỌC TẬP bằng tiếng Việt cho học sinh. " +
       "Bạn giúp học sinh hiểu bài, giải thích khái niệm, gợi ý cách làm, không làm hộ toàn bộ. " +
       "Bạn có quyền sử dụng dữ liệu Google được cung cấp:\n" +
-      "- Nếu status = 'ok' thì ưu tiên dùng thông tin trong kết quả Google, trích ý chính, không copy nguyên xi.\n" +
-"- Nếu status = 'empty' thì nói rõ là Google không có kết quả phù hợp, NHƯNG không được nói Google bị lỗi.\n" +
+      "- Nếu status = 'ok' thì ưu tiên dùng thông tin trong kết quả Google.\n" +
+      "- Nếu status = 'empty' thì nói rõ là Google không có kết quả phù hợp, NHƯNG không được nói Google bị lỗi.\n" +
       "- Nếu status = 'error' thì mới được nói Google đang gặp lỗi, sau đó trả lời dựa trên kiến thức sẵn có.\n";
 
     let userContent = `Câu hỏi của học sinh: ${userPrompt}\n\n`;
@@ -240,17 +268,23 @@ app.post("/chat", async (req, res) => {
         "Hãy xin lỗi vì lỗi kỹ thuật này, nhưng vẫn cố gắng giúp học sinh dựa trên kiến thức của bạn (có thể không cập nhật).";
     }
 
+    const messages = [
+      { role: "system", content: systemContent },
+      ...history,
+      { role: "user", content: userContent },
+    ];
+
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemContent },
-        { role: "user", content: userContent },
-      ],
+      messages,
       temperature: 0.2,
     });
 
+    const reply = completion.choices[0].message.content;
+    saveToHistory(sessionId, userPrompt, reply);
+
     res.json({
-      reply: completion.choices[0].message.content,
+      reply,
       googleStatus: googleResult.status,
       googleText: googleResult.text,
     });
@@ -265,7 +299,7 @@ app.get("/debug-google", async (req, res) => {
   try {
     const q = req.query.q || "định nghĩa vật lý";
     const result = await googleSearch(q);
-    res.type("text/plain").send(`Status: ${result.status}\n\n${result.text}`);
+res.type("text/plain").send(`Status: ${result.status}\n\n${result.text}`);
   } catch (err) {
     res.status(500).send("Debug Google error.");
   }
